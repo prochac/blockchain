@@ -5,6 +5,8 @@ import (
 	"os"
 )
 
+const MiningReward = 10
+
 type blockchain []block
 type block struct {
 	previousHash string
@@ -35,30 +37,76 @@ var (
 	}
 )
 
+func getBalance(participant string) float64 {
+	var (
+		txSender     float64
+		openTxSender float64
+		txRecipient  float64
+	)
+	for _, block := range bch {
+		for _, tx := range block.transactions {
+			if tx.Sender == participant {
+				txSender += tx.Amount
+			}
+			if tx.Recipient == participant {
+				txRecipient += tx.Amount
+			}
+		}
+	}
+	for _, tx := range openTransactions {
+		if tx.Sender == participant {
+			openTxSender += tx.Amount
+		}
+	}
+
+	return txRecipient - (txSender + openTxSender)
+}
+
 func getLastBlock(bch blockchain) *block {
 	return &bch[len(bch)-1]
 }
 
-func addTransaction(recipient string, amount float64) {
-	addTransactionWithSender(owner, recipient, amount)
+func verifyTransaction(tx transaction) bool {
+	return getBalance(tx.Sender) >= tx.Amount
 }
 
-func addTransactionWithSender(sender, recipient string, amount float64) {
+func addTransaction(recipient string, amount float64) bool {
+	return addTransactionWithSender(owner, recipient, amount)
+}
+
+func addTransactionWithSender(sender, recipient string, amount float64) bool {
 	tx := transaction{
 		Sender:    sender,
 		Recipient: recipient,
 		Amount:    amount,
 	}
+
+	if !verifyTransaction(tx) {
+		return false
+	}
+
 	openTransactions = append(openTransactions, tx)
 	participants[sender] = struct{}{}
 	participants[recipient] = struct{}{}
+	return true
 }
 
 func mineBlock() {
+	rewardTx := transaction{
+		Sender:    "MINING",
+		Recipient: owner,
+		Amount:    MiningReward,
+	}
+
+	copiedTransactions := make([]transaction, len(openTransactions))
+	copy(copiedTransactions, openTransactions)
+
+	copiedTransactions = append(copiedTransactions, rewardTx)
+
 	b := block{
 		previousHash: getLastBlock(bch).Hash(),
 		index:        int64(len(bch)),
-		transactions: openTransactions,
+		transactions: copiedTransactions,
 	}
 	bch = append(bch, b)
 }
@@ -91,6 +139,15 @@ func verifyChain() bool {
 	return true
 }
 
+func verifyTransactions() bool {
+	for _, tx := range openTransactions {
+		if !verifyTransaction(tx) {
+			return false
+		}
+	}
+	return true
+}
+
 func getUserChoice() string {
 	var s string
 	if _, err := fmt.Scan(&s); err != nil {
@@ -106,19 +163,31 @@ func main() {
 		fmt.Println("2: Mine a new block")
 		fmt.Println("3: Output the clockchain blocks")
 		fmt.Println("4: Output participants")
+		fmt.Println("4: Check transaction validity")
 		fmt.Println("h: Manipulate the chain")
 		fmt.Println("q: Quit")
 
 		switch getUserChoice() {
 		case "1":
 			txSender, txAmount := getTransactionValue()
-			addTransaction(txSender, txAmount)
+			if !addTransaction(txSender, txAmount) {
+				fmt.Println("Transaction failed!")
+				break
+			}
+			fmt.Println("Added transaction!")
 		case "2":
 			mineBlock()
+			openTransactions = nil
 		case "3":
 			fmt.Println(bch)
 		case "4":
 			fmt.Println(participants)
+		case "5":
+			if !verifyTransactions() {
+				fmt.Println("There are invalid transactions")
+				break
+			}
+			fmt.Println("All transactions are valid")
 		case "h":
 			if len(bch) < 1 {
 				continue
@@ -137,6 +206,7 @@ func main() {
 		default:
 			fmt.Println("Input was invalid, please pick a value from the list!")
 		}
+		fmt.Printf("Balance of %s: %6.2f\n", owner, getBalance(owner))
 
 		if !verifyChain() {
 			panic("chain is broken")

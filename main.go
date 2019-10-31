@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 const MiningReward = 10
@@ -12,14 +14,7 @@ type block struct {
 	previousHash string
 	index        int64
 	transactions []transaction
-}
-
-func (b block) Hash() string {
-	return fmt.Sprintf("%s-%d-%v",
-		b.previousHash,
-		b.index,
-		b.transactions,
-	)
+	proof        uint64
 }
 
 type transaction struct {
@@ -30,12 +25,29 @@ type transaction struct {
 
 var (
 	bch              = blockchain{{}}
-	openTransactions []transaction
+	openTransactions = []transaction{}
 	owner            = "Tomas"
 	participants     = map[string]struct{}{
 		"Tomas": struct{}{},
 	}
 )
+
+func validProof(tx []transaction, lastHash string, proof uint64) bool {
+	b, _ := json.Marshal(tx)
+	guess := string(b) + lastHash + strconv.FormatUint(proof, 10)
+	h := HashString256(guess)
+	fmt.Println(h)
+	return h[:2] == "00"
+}
+
+func proofOfWork() uint64 {
+	lastHash := getLastBlock(bch).Hash()
+	var proof uint64
+	for !validProof(openTransactions, lastHash, proof) {
+		proof++
+	}
+	return proof
+}
 
 func getBalance(participant string) float64 {
 	var (
@@ -92,6 +104,9 @@ func addTransactionWithSender(sender, recipient string, amount float64) bool {
 }
 
 func mineBlock() {
+	hashedBlock := getLastBlock(bch).Hash()
+	proof := proofOfWork()
+
 	rewardTx := transaction{
 		Sender:    "MINING",
 		Recipient: owner,
@@ -104,9 +119,10 @@ func mineBlock() {
 	copiedTransactions = append(copiedTransactions, rewardTx)
 
 	b := block{
-		previousHash: getLastBlock(bch).Hash(),
+		previousHash: hashedBlock,
 		index:        int64(len(bch)),
 		transactions: copiedTransactions,
+		proof:        proof,
 	}
 	bch = append(bch, b)
 }
@@ -133,6 +149,10 @@ func verifyChain() bool {
 		}
 
 		if b.previousHash != bch[i-1].Hash() {
+			return false
+		}
+		if !validProof(b.transactions[:len(b.transactions)-1], b.previousHash, b.proof) {
+			fmt.Println("Proof of work is invalid")
 			return false
 		}
 	}

@@ -11,7 +11,7 @@ func HashString256(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func (b block) Hash() string {
+func (b Block) Hash() string {
 	j, _ := json.Marshal(b)
 	return HashString256(string(j))
 }

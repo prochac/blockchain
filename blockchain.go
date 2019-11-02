@@ -6,25 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 )
 
 const MiningReward = 10
 const Owner = "Tomas"
 
 type BlockChain []Block
-type Block struct {
-	PreviousHash string
-	Index        int64
-	Transactions []Transaction
-	Proof        uint64
-}
-
-type Transaction struct {
-	Sender    string
-	Recipient string
-	Amount    float64
-}
 
 var (
 	bch              BlockChain
@@ -85,14 +72,6 @@ func saveData() {
 	}
 }
 
-func validProof(tx []Transaction, lastHash string, proof uint64) bool {
-	b, _ := json.Marshal(tx)
-	guess := string(b) + lastHash + strconv.FormatUint(proof, 10)
-	h := HashString256(guess)
-	fmt.Println(h)
-	return h[:2] == "00"
-}
-
 func proofOfWork() uint64 {
 	lastHash := getLastBlock(bch).Hash()
 	var proof uint64
@@ -131,10 +110,6 @@ func getLastBlock(bch BlockChain) *Block {
 	return &bch[len(bch)-1]
 }
 
-func verifyTransaction(tx Transaction) bool {
-	return getBalance(tx.Sender) >= tx.Amount
-}
-
 func addTransaction(recipient string, amount float64) bool {
 	return addTransactionWithSender(Owner, recipient, amount)
 }
@@ -146,13 +121,11 @@ func addTransactionWithSender(sender, recipient string, amount float64) bool {
 		Amount:    amount,
 	}
 
-	if !verifyTransaction(tx) {
+	if !verifyTransaction(tx, getBalance) {
 		return false
 	}
 
 	openTransactions = append(openTransactions, tx)
-	participants[sender] = struct{}{}
-	participants[recipient] = struct{}{}
 	return true
 }
 
@@ -195,32 +168,6 @@ func getTransactionValue() (string, float64) {
 	return s, f
 }
 
-func verifyChain() bool {
-	for i, b := range bch {
-		if i == 0 {
-			continue
-		}
-
-		if b.PreviousHash != bch[i-1].Hash() {
-			return false
-		}
-		if !validProof(b.Transactions[:len(b.Transactions)-1], b.PreviousHash, b.Proof) {
-			fmt.Println("Proof of work is invalid")
-			return false
-		}
-	}
-	return true
-}
-
-func verifyTransactions() bool {
-	for _, tx := range openTransactions {
-		if !verifyTransaction(tx) {
-			return false
-		}
-	}
-	return true
-}
-
 func getUserChoice() string {
 	var s string
 	if _, err := fmt.Scan(&s); err != nil {
@@ -260,7 +207,7 @@ func main() {
 		case "4":
 			fmt.Println(participants)
 		case "5":
-			if !verifyTransactions() {
+			if !verifyTransactions(openTransactions, getBalance) {
 				fmt.Println("There are invalid Transactions")
 				break
 			}
@@ -285,7 +232,7 @@ func main() {
 		}
 		fmt.Printf("Balance of %s: %6.2f\n", Owner, getBalance(Owner))
 
-		if !verifyChain() {
+		if !verifyChain(bch) {
 			panic("chain is broken")
 		}
 	}

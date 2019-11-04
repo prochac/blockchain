@@ -12,7 +12,7 @@ const MiningReward = 10
 var participants = map[string]struct{}{}
 
 type BlockChain struct {
-	HostingNode      *Node
+	HostingNode      string
 	chain            []Block
 	openTransactions []Transaction
 }
@@ -91,7 +91,7 @@ func (b BlockChain) ProofOfWork() uint64 {
 }
 
 func (b BlockChain) GetBalance() float64 {
-	participant := b.HostingNode.ID
+	participant := b.HostingNode
 
 	var (
 		txSender     float64
@@ -121,13 +121,20 @@ func (b BlockChain) GetLastBlock() *Block {
 	return &b.chain[len(b.chain)-1]
 }
 
-func (b *BlockChain) AddTransaction(recipient, sender string, amount float64) bool {
+func (b *BlockChain) AddTransaction(recipient, sender string, signature string, amount float64) bool {
+	if b.HostingNode == "" {
+		return false
+	}
+
 	tx := Transaction{
 		Sender:    sender,
 		Recipient: recipient,
 		Amount:    amount,
+		Signature: signature,
 	}
-
+	if !(Wallet{}).VerifyTransaction(tx) {
+		return false
+	}
 	if !Verification.VerifyTransaction(tx, b.GetBalance) {
 		return false
 	}
@@ -137,13 +144,17 @@ func (b *BlockChain) AddTransaction(recipient, sender string, amount float64) bo
 	return true
 }
 
-func (b *BlockChain) MineBlock() {
+func (b *BlockChain) MineBlock() bool {
+	if b.HostingNode == "" {
+		return false
+	}
+
 	hashedBlock := b.GetLastBlock().Hash()
 	proof := b.ProofOfWork()
 
 	rewardTx := Transaction{
 		Sender:    "MINING",
-		Recipient: b.HostingNode.ID,
+		Recipient: b.HostingNode,
 		Amount:    MiningReward,
 	}
 
@@ -158,7 +169,13 @@ func (b *BlockChain) MineBlock() {
 		Transactions: copiedTransactions,
 		Proof:        proof,
 	}
+	for _, tx := range block.Transactions {
+		if !(Wallet{}).VerifyTransaction(tx) {
+			return false
+		}
+	}
 	b.chain = append(b.chain, block)
 	b.openTransactions = make([]Transaction, 0)
 	b.SaveData()
+	return true
 }

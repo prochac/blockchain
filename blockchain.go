@@ -132,9 +132,7 @@ func (b *BlockChain) AddTransaction(recipient, sender string, signature string, 
 		Amount:    amount,
 		Signature: signature,
 	}
-	if !(Wallet{}).VerifyTransaction(tx) {
-		return false
-	}
+
 	if !Verification.VerifyTransaction(tx, b.GetBalance) {
 		return false
 	}
@@ -144,9 +142,9 @@ func (b *BlockChain) AddTransaction(recipient, sender string, signature string, 
 	return true
 }
 
-func (b *BlockChain) MineBlock() bool {
+func (b *BlockChain) MineBlock() *Block {
 	if b.HostingNode == "" {
-		return false
+		return nil
 	}
 
 	hashedBlock := b.GetLastBlock().Hash()
@@ -161,6 +159,12 @@ func (b *BlockChain) MineBlock() bool {
 	copiedTransactions := make([]Transaction, len(b.openTransactions))
 	copy(copiedTransactions, b.openTransactions)
 
+	for _, tx := range copiedTransactions {
+		if !(Wallet{}).VerifyTransaction(tx) {
+			return nil
+		}
+	}
+
 	copiedTransactions = append(copiedTransactions, rewardTx)
 
 	block := Block{
@@ -169,13 +173,8 @@ func (b *BlockChain) MineBlock() bool {
 		Transactions: copiedTransactions,
 		Proof:        proof,
 	}
-	for _, tx := range block.Transactions {
-		if !(Wallet{}).VerifyTransaction(tx) {
-			return false
-		}
-	}
 	b.chain = append(b.chain, block)
 	b.openTransactions = make([]Transaction, 0)
 	b.SaveData()
-	return true
+	return &block
 }

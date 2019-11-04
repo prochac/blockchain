@@ -107,9 +107,6 @@ func (w *Wallet) SignTransaction(sender, recipient string, amount float64) strin
 }
 
 func (w Wallet) VerifyTransaction(transaction Transaction) bool {
-	if transaction.Sender == "MINING" {
-		return true
-	}
 	publicKey, err := base64.StdEncoding.DecodeString(transaction.Sender)
 	if err != nil {
 		panic(err)
@@ -126,5 +123,5 @@ func (w Wallet) VerifyTransaction(transaction Transaction) bool {
 	}
 
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s%s%f", transaction.Sender, transaction.Recipient, transaction.Amount)))
-	return rsa.VerifyPKCS1v15(verifier, crypto.SHA256, hash[:], signature, ) == nil
+	return rsa.VerifyPKCS1v15(verifier, crypto.SHA256, hash[:], signature) == nil
 }

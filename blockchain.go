@@ -91,6 +91,10 @@ func (b BlockChain) ProofOfWork() uint64 {
 }
 
 func (b BlockChain) GetBalance() float64 {
+	if b.HostingNode == ""{
+		return -1
+	}
+
 	participant := b.HostingNode
 
 	var (

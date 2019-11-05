@@ -36,9 +36,9 @@ func (w *Wallet) CreateKeys() {
 	w.PublicKey = base64.StdEncoding.EncodeToString(publicKey)
 }
 
-func (w *Wallet) SaveKeys() {
+func (w *Wallet) SaveKeys()bool {
 	if w.PublicKey == "" || w.PrivateKey == "" {
-		return
+		return false
 	}
 
 	f, err := os.OpenFile("wallet.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
@@ -59,9 +59,11 @@ func (w *Wallet) SaveKeys() {
 	if _, err := f.WriteString(w.PrivateKey); err != nil {
 		panic(err)
 	}
+
+	return true
 }
 
-func (w *Wallet) LoadKeys() {
+func (w *Wallet) LoadKeys() bool {
 	f, err := os.Open("wallet.txt")
 	if err != nil {
 		panic(err)
@@ -84,6 +86,8 @@ func (w *Wallet) LoadKeys() {
 
 	w.PrivateKey = privateKey
 	w.PublicKey = publicKey
+
+	return true
 }
 
 func (w *Wallet) SignTransaction(sender, recipient string, amount float64) string {

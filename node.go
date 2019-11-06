@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
 )
 
 var (
@@ -21,7 +23,7 @@ func createKeys(w http.ResponseWriter, r *http.Request) {
 	if !wallet.SaveKeys() {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Saving the keys failed.",
 		})
 		return
@@ -31,7 +33,7 @@ func createKeys(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"public_key":  wallet.PublicKey,
 		"private_key": wallet.PrivateKey,
 		"funds":       blockchain.GetBalance(),
@@ -47,7 +49,7 @@ func loadKeys(w http.ResponseWriter, r *http.Request) {
 	if !wallet.LoadKeys() {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Loading the keys failed.",
 		})
 		return
@@ -57,7 +59,7 @@ func loadKeys(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"public_key":  wallet.PublicKey,
 		"private_key": wallet.PrivateKey,
 		"funds":       blockchain.GetBalance(),
@@ -69,7 +71,7 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 	if balance < 0 {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":       "Loading balance failed.",
 			"wallet_set_up": wallet.PublicKey != "",
 		})
@@ -78,19 +80,28 @@ func getBalance(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Fetched balance successfully.",
 		"funds":   balance,
 	})
 }
 
-func getUI(w http.ResponseWriter, r *http.Request) {
+func getNodeUI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 
 	http.ServeFile(w, r, "ui/node.html")
+}
+
+func getNetworkUI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	http.ServeFile(w, r, "ui/network.html")
 }
 
 func addTransaction(w http.ResponseWriter, r *http.Request) {
@@ -101,21 +112,20 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 	if wallet.PublicKey == "" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "No wallet set up.",
 		})
 		return
 	}
 
 	var data struct {
-		Recipient string
-		Amount    float64
+		Recipient string  `json:"recipient"`
+		Amount    float64 `json:"amount"`
 	}
-	err := json.NewDecoder(r.Body).Decode(&data)
-	if err != nil || data.Recipient == "" || data.Amount == 0 {
+	if json.NewDecoder(r.Body).Decode(&data) != nil || data.Recipient == "" || data.Amount == 0 {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Required data is missing.",
 		})
 		return
@@ -125,7 +135,7 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 	if !blockchain.AddTransaction(data.Recipient, wallet.PublicKey, signature, data.Amount) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Creating a transaction failed.",
 		})
 		return
@@ -133,7 +143,7 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Successfully added transaction.",
 		"transaction": Transaction{
 			Sender:    wallet.PublicKey,
@@ -155,7 +165,7 @@ func mine(w http.ResponseWriter, r *http.Request) {
 	if block == nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":       "Adding a block failed.",
 			"wallet_set_up": wallet.PublicKey != "",
 		})
@@ -164,7 +174,7 @@ func mine(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Block added successfully.",
 		"block":   block,
 		"funds":   blockchain.GetBalance(),
@@ -181,7 +191,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(transactions)
+	_ = json.NewEncoder(w).Encode(transactions)
 }
 
 func getChain(w http.ResponseWriter, r *http.Request) {
@@ -193,14 +203,82 @@ func getChain(w http.ResponseWriter, r *http.Request) {
 	chainSnapshot := blockchain.Chain()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(chainSnapshot)
+	_ = json.NewEncoder(w).Encode(chainSnapshot)
+}
+
+func addNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data struct {
+		Node string `json:"node"`
+	}
+	if json.NewDecoder(r.Body).Decode(&data) != nil || data.Node == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "No data attached.",
+		})
+		return
+	}
+
+	blockchain.AddPeerNode(data.Node)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":   "Node added successfully.",
+		"all_nodes": blockchain.PeerNodes(),
+	})
+}
+
+func removeNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	nodeURL := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/nodeURL/"), "/", 1)[0]
+	if nodeURL == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "No nodeURL found.",
+		})
+		return
+	}
+
+	blockchain.RemovePeerNode(nodeURL)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":   "Node added successfully.",
+		"all_nodes": blockchain.PeerNodes(),
+	})
+}
+
+func getNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"all_nodes": blockchain.PeerNodes(),
+	})
 }
 
 func main() {
 	blockchain = BlockChain{HostingNode: wallet.PublicKey}
 	blockchain.LoadData()
 
-	http.HandleFunc("/", getUI)
+	http.HandleFunc("/", getNodeUI)
+	http.HandleFunc("/network", getNetworkUI)
 	http.HandleFunc("/mine", mine)
 	http.HandleFunc("/chain", getChain)
 	http.HandleFunc("/wallet", func(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +295,10 @@ func main() {
 	http.HandleFunc("/transaction", addTransaction)
 	http.HandleFunc("/transactions", getTransactions)
 	http.HandleFunc("/balance", getBalance)
+	http.HandleFunc("/nodes", getNode)
+	http.HandleFunc("/node", addNode)
+	http.HandleFunc("/node/", removeNode)
 
 	fmt.Println("* Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)")
-	http.ListenAndServe("0.0.0.0:5000", nil)
+	log.Fatal(http.ListenAndServe("0.0.0.0:5000", nil))
 }

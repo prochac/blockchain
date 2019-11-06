@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -13,9 +14,10 @@ const MiningReward = 10
 var participants = map[string]struct{}{}
 
 type BlockChain struct {
-	HostingNode      string        `json:"hosting_node"`
-	chain            []Block       `json:"chain"`
-	openTransactions []Transaction `json:"open_transactions"`
+	HostingNode      string
+	chain            []Block
+	openTransactions []Transaction
+	peerNodes        []string // TODO transform to set (map[string]struct{})
 }
 
 func (b *BlockChain) Chain() []Block {
@@ -59,13 +61,38 @@ func (b *BlockChain) LoadData() {
 		panic(err)
 	}
 
+	buf.Reset()
 	txLine, err := r.ReadSlice('\n')
+	for err == bufio.ErrBufferFull {
+		buf.Write(txLine)
+		txLine, err = r.ReadSlice('\n')
+	}
 	if err != nil {
 		panic(err)
 	}
-	if err := json.Unmarshal(txLine, &b.openTransactions); err != nil {
+	buf.Write(chainLine)
+	if err := json.NewEncoder(&buf).Encode(&b.openTransactions); err != nil {
 		panic(err)
 	}
+
+	buf.Reset()
+	nodesLine, err := r.ReadSlice('\n')
+	for err == bufio.ErrBufferFull {
+		buf.Write(nodesLine)
+		nodesLine, err = r.ReadSlice('\n')
+	}
+	if err != nil {
+		panic(err)
+	}
+	buf.Write(nodesLine)
+
+	fmt.Println(buf.String())
+
+	var s []string
+	if err := json.Unmarshal(buf.Bytes(), &s); err != nil {
+		panic(err)
+	}
+	b.peerNodes = s
 }
 
 func (b BlockChain) SaveData() {
@@ -84,6 +111,9 @@ func (b BlockChain) SaveData() {
 		panic(err)
 	}
 	if err := e.Encode(b.openTransactions); err != nil {
+		panic(err)
+	}
+	if err := e.Encode(b.peerNodes); err != nil {
 		panic(err)
 	}
 }
@@ -188,4 +218,27 @@ func (b *BlockChain) MineBlock() *Block {
 	b.openTransactions = make([]Transaction, 0)
 	b.SaveData()
 	return &block
+}
+
+func (b *BlockChain) PeerNodes() []string {
+	cp := make([]string, len(b.peerNodes))
+	copy(cp, b.peerNodes)
+	return cp
+}
+
+func (b *BlockChain) AddPeerNode(node string) {
+	b.peerNodes = append(b.peerNodes, node)
+	b.SaveData()
+}
+
+func (b *BlockChain) RemovePeerNode(node string) {
+	filtered := b.peerNodes[:0]
+	for _, x := range b.peerNodes {
+		if x == node {
+			filtered = append(filtered, x)
+		}
+	}
+
+	b.peerNodes = filtered
+	b.SaveData()
 }

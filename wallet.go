@@ -16,8 +16,8 @@ import (
 )
 
 type Wallet struct {
-	PrivateKey string
-	PublicKey  string
+	PrivateKey string `json:"private_key"`
+	PublicKey  string `json:"public_key"`
 }
 
 func (w *Wallet) CreateKeys() {
@@ -36,7 +36,7 @@ func (w *Wallet) CreateKeys() {
 	w.PublicKey = base64.StdEncoding.EncodeToString(publicKey)
 }
 
-func (w *Wallet) SaveKeys()bool {
+func (w *Wallet) SaveKeys() bool {
 	if w.PublicKey == "" || w.PrivateKey == "" {
 		return false
 	}

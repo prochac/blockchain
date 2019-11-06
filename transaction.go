@@ -1,8 +1,8 @@
 package main
 
 type Transaction struct {
-	Sender    string
-	Recipient string
-	Amount    float64
-	Signature string
+	Sender    string  `json:"sender"`
+	Recipient string  `json:"recipient"`
+	Amount    float64 `json:"amount"`
+	Signature string  `json:"signature"`
 }

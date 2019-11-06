@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -12,9 +13,9 @@ const MiningReward = 10
 var participants = map[string]struct{}{}
 
 type BlockChain struct {
-	HostingNode      string
-	chain            []Block
-	openTransactions []Transaction
+	HostingNode      string        `json:"hosting_node"`
+	chain            []Block       `json:"chain"`
+	openTransactions []Transaction `json:"open_transactions"`
 }
 
 func (b *BlockChain) Chain() []Block {
@@ -44,11 +45,17 @@ func (b *BlockChain) LoadData() {
 
 	r := bufio.NewReader(f)
 
+	var buf bytes.Buffer
 	chainLine, err := r.ReadSlice('\n')
+	for err == bufio.ErrBufferFull {
+		buf.Write(chainLine)
+		chainLine, err = r.ReadSlice('\n')
+	}
 	if err != nil {
 		panic(err)
 	}
-	if err := json.Unmarshal(chainLine, &b.chain); err != nil {
+	buf.Write(chainLine)
+	if err := json.NewDecoder(&buf).Decode(&b.chain); err != nil {
 		panic(err)
 	}
 
@@ -91,7 +98,7 @@ func (b BlockChain) ProofOfWork() uint64 {
 }
 
 func (b BlockChain) GetBalance() float64 {
-	if b.HostingNode == ""{
+	if b.HostingNode == "" {
 		return -1
 	}
 

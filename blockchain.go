@@ -252,11 +252,31 @@ func (b *BlockChain) MineBlock() *Block {
 	b.chain = append(b.chain, block)
 	b.openTransactions = make([]Transaction, 0)
 	b.SaveData()
+
+	for _, node := range b.peerNodes {
+		var buf bytes.Buffer
+		_ = json.NewEncoder(&buf).Encode(map[string]interface{}{
+			"block": block,
+		})
+		resp, err := (&http.Client{Timeout: time.Second}).Post("http://"+node+"/broadcast-block", "application/json", &buf)
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+		if err != nil {
+			// TODO only connection error
+			continue
+		}
+		if resp.StatusCode == 400 || resp.StatusCode == 500 {
+			fmt.Println("Block declined, needs resolving")
+			return nil
+		}
+	}
+
 	return &block
 }
 
 func (b *BlockChain) AddBlock(block Block) bool {
-	if !Verification.ValidProof(block.Transactions, block.PreviousHash, block.Proof) {
+	if !Verification.ValidProof(block.Transactions[:len(block.Transactions)-1], block.PreviousHash, block.Proof) {
 		return false
 	}
 

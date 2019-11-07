@@ -170,8 +170,18 @@ func broadcastBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	//if block.Index == blockchain.GetLastBlock().Index+1
 	if !blockchain.AddBlock(block) {
-		// fail
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Block seems invalid.",
+		})
+		return
 	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Block added.",
+	})
 }
 
 func addTransaction(w http.ResponseWriter, r *http.Request) {

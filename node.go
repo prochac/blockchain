@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,7 +30,7 @@ func createKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blockchain.HostingNode = wallet.PublicKey
+	blockchain.PublicKey = wallet.PublicKey
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
@@ -55,7 +56,7 @@ func loadKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blockchain.HostingNode = wallet.PublicKey
+	blockchain.PublicKey = wallet.PublicKey
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
@@ -104,11 +105,81 @@ func getNetworkUI(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "ui/network.html")
 }
 
+func broadcastTransaction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	var tx Transaction
+	if json.NewDecoder(r.Body).Decode(&tx) != nil || tx.Sender == "" || tx.Recipient == "" || tx.Amount == 0 || tx.Signature == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Some tx is missing.",
+		})
+		return
+	}
+
+	if !blockchain.AddTransactionReceiving(tx.Recipient, tx.Sender, tx.Signature, tx.Amount) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Creating a transaction failed.",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":     "Successfully added transaction.",
+		"transaction": tx,
+	})
+}
+
+func broadcastBlock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data struct {
+		Block *Block `json:"block"`
+	}
+	if json.NewDecoder(r.Body).Decode(&data) != nil || data.Block == nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Some tx is missing.",
+		})
+		return
+	}
+	block := *data.Block
+	if block.Index < blockchain.GetLastBlock().Index+1 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Blockchain seems to be shorter, block not added.",
+		})
+		return
+	}
+
+	if block.Index > blockchain.GetLastBlock().Index+1 {
+		// too much new
+	}
+	//if block.Index == blockchain.GetLastBlock().Index+1
+	if !blockchain.AddBlock(block) {
+		// fail
+	}
+}
+
 func addTransaction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
+
 	if wallet.PublicKey == "" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
@@ -274,7 +345,13 @@ func getNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	blockchain = BlockChain{HostingNode: wallet.PublicKey}
+	var port int
+	flag.IntVar(&port, "port", 5000, "")
+	flag.IntVar(&port, "p", 5000, "")
+	flag.Parse()
+
+	wallet.NodeID = port
+	blockchain = BlockChain{PublicKey: wallet.PublicKey, NodeID: port}
 	blockchain.LoadData()
 
 	http.HandleFunc("/", getNodeUI)
@@ -298,7 +375,10 @@ func main() {
 	http.HandleFunc("/nodes", getNode)
 	http.HandleFunc("/node", addNode)
 	http.HandleFunc("/node/", removeNode)
+	http.HandleFunc("/broadcast-transaction", broadcastTransaction)
+	http.HandleFunc("/broadcast-block", broadcastBlock)
 
-	fmt.Println("* Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)")
-	log.Fatal(http.ListenAndServe("0.0.0.0:5000", nil))
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	fmt.Printf("* Running on http://%s/ (Press CTRL+C to quit)\n", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }

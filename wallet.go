@@ -16,6 +16,7 @@ import (
 )
 
 type Wallet struct {
+	NodeID     int
 	PrivateKey string `json:"private_key"`
 	PublicKey  string `json:"public_key"`
 }
@@ -41,7 +42,7 @@ func (w *Wallet) SaveKeys() bool {
 		return false
 	}
 
-	f, err := os.OpenFile("wallet.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(fmt.Sprintf("wallet-%d.txt", w.NodeID), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +65,7 @@ func (w *Wallet) SaveKeys() bool {
 }
 
 func (w *Wallet) LoadKeys() bool {
-	f, err := os.Open("wallet.txt")
+	f, err := os.Open(fmt.Sprintf("wallet-%d.txt", w.NodeID))
 	if err != nil {
 		panic(err)
 	}

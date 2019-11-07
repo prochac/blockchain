@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 )
 
 const MiningReward = 10
@@ -14,7 +16,8 @@ const MiningReward = 10
 var participants = map[string]struct{}{}
 
 type BlockChain struct {
-	HostingNode      string
+	NodeID           int
+	PublicKey        string
 	chain            []Block
 	openTransactions []Transaction
 	peerNodes        []string // TODO transform to set (map[string]struct{})
@@ -33,7 +36,7 @@ func (b *BlockChain) OpenTransactions() []Transaction {
 }
 
 func (b *BlockChain) LoadData() {
-	f, err := os.Open("blockchain.txt")
+	f, err := os.Open(fmt.Sprintf("blockchain-%d.txt", b.NodeID))
 	if err != nil {
 		var pErr *os.PathError
 		if errors.As(err, &pErr) {
@@ -96,7 +99,7 @@ func (b *BlockChain) LoadData() {
 }
 
 func (b BlockChain) SaveData() {
-	f, err := os.OpenFile("blockchain.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(fmt.Sprintf("blockchain-%d.txt", b.NodeID), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -128,12 +131,13 @@ func (b BlockChain) ProofOfWork() uint64 {
 }
 
 func (b BlockChain) GetBalance() float64 {
-	if b.HostingNode == "" {
+	if b.PublicKey == "" {
 		return -1
 	}
+	return b.GetBalanceWithSender(b.PublicKey)
+}
 
-	participant := b.HostingNode
-
+func (b BlockChain) GetBalanceWithSender(sender string) float64 {
 	var (
 		txSender     float64
 		openTxSender float64
@@ -141,16 +145,16 @@ func (b BlockChain) GetBalance() float64 {
 	)
 	for _, block := range b.chain {
 		for _, tx := range block.Transactions {
-			if tx.Sender == participant {
+			if tx.Sender == sender {
 				txSender += tx.Amount
 			}
-			if tx.Recipient == participant {
+			if tx.Recipient == sender {
 				txRecipient += tx.Amount
 			}
 		}
 	}
 	for _, tx := range b.openTransactions {
-		if tx.Sender == participant {
+		if tx.Sender == sender {
 			openTxSender += tx.Amount
 		}
 	}
@@ -163,7 +167,7 @@ func (b BlockChain) GetLastBlock() *Block {
 }
 
 func (b *BlockChain) AddTransaction(recipient, sender string, signature string, amount float64) bool {
-	if b.HostingNode == "" {
+	if b.PublicKey == "" {
 		return false
 	}
 
@@ -174,17 +178,48 @@ func (b *BlockChain) AddTransaction(recipient, sender string, signature string, 
 		Signature: signature,
 	}
 
-	if !Verification.VerifyTransaction(tx, b.GetBalance) {
+	if !Verification.VerifyTransaction(tx, b.GetBalanceWithSender) {
 		return false
 	}
 
 	b.openTransactions = append(b.openTransactions, tx)
 	b.SaveData()
+
+	return true
+}
+
+func (b *BlockChain) AddTransactionReceiving(recipient, sender string, signature string, amount float64) bool {
+	if !b.AddTransaction(recipient, sender, signature, amount) {
+		return false
+	}
+
+	for _, node := range b.peerNodes {
+		var buf bytes.Buffer
+		_ = json.NewEncoder(&buf).Encode(map[string]interface{}{
+			"sender":    sender,
+			"recipient": recipient,
+			"amount":    amount,
+			"signature": signature,
+		})
+		resp, err := (&http.Client{Timeout: time.Second}).Post("http://"+node+"/broadcast-transaction", "application/json", &buf)
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+		if err != nil {
+			// TODO only connection error
+			continue
+		}
+		if resp.StatusCode == 400 || resp.StatusCode == 500 {
+			fmt.Println("Transaction declined, needs resolving")
+			return false
+		}
+	}
+
 	return true
 }
 
 func (b *BlockChain) MineBlock() *Block {
-	if b.HostingNode == "" {
+	if b.PublicKey == "" {
 		return nil
 	}
 
@@ -193,7 +228,7 @@ func (b *BlockChain) MineBlock() *Block {
 
 	rewardTx := Transaction{
 		Sender:    "MINING",
-		Recipient: b.HostingNode,
+		Recipient: b.PublicKey,
 		Amount:    MiningReward,
 	}
 
@@ -218,6 +253,20 @@ func (b *BlockChain) MineBlock() *Block {
 	b.openTransactions = make([]Transaction, 0)
 	b.SaveData()
 	return &block
+}
+
+func (b *BlockChain) AddBlock(block Block) bool {
+	if !Verification.ValidProof(block.Transactions, block.PreviousHash, block.Proof) {
+		return false
+	}
+
+	if b.GetLastBlock().Hash() != block.PreviousHash {
+		return false
+	}
+
+	b.chain = append(b.chain, block)
+	b.SaveData()
+	return true
 }
 
 func (b *BlockChain) PeerNodes() []string {

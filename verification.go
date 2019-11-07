@@ -9,7 +9,7 @@ import (
 var Verification struct {
 	ValidProof         func(tx []Transaction, lastHash string, proof uint64) bool
 	VerifyChain        func(bch BlockChain) bool
-	VerifyTransaction  func(tx Transaction, getBalance func() float64) bool
+	VerifyTransaction  func(tx Transaction, getBalance func(string) float64) bool
 	VerifyTransactions func(openTransactions []Transaction) bool
 }
 
@@ -37,11 +37,11 @@ func init() {
 		}
 		return true
 	}
-	Verification.VerifyTransaction = func(tx Transaction, getBalance func() float64) bool {
+	Verification.VerifyTransaction = func(tx Transaction, getBalance func(string) float64) bool {
 		if getBalance == nil {
 			return (Wallet{}).VerifyTransaction(tx)
 		}
-		return getBalance() >= tx.Amount && (Wallet{}).VerifyTransaction(tx)
+		return getBalance(tx.Sender) >= tx.Amount && (Wallet{}).VerifyTransaction(tx)
 	}
 	Verification.VerifyTransactions = func(openTransactions []Transaction) bool {
 		for _, tx := range openTransactions {

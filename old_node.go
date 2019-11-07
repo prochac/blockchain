@@ -44,11 +44,11 @@ func (n *Node) ListenForInput() {
 			fmt.Println("All Transactions are valid")
 		case "5":
 			n.Wallet.CreateKeys()
-			n.BlockChain = BlockChain{HostingNode: n.Wallet.PublicKey}
+			n.BlockChain.PublicKey = n.Wallet.PublicKey
 			n.BlockChain.LoadData()
 		case "6":
 			n.Wallet.LoadKeys()
-			n.BlockChain = BlockChain{HostingNode: n.Wallet.PublicKey}
+			n.BlockChain.PublicKey = n.Wallet.PublicKey
 			n.BlockChain.LoadData()
 		case "7":
 			n.Wallet.SaveKeys()
@@ -97,7 +97,7 @@ func (n Node) PrintBlockChainElements() {
 func _main() {
 	var n Node
 	n.Wallet.CreateKeys()
-	n.BlockChain = BlockChain{HostingNode: n.Wallet.PublicKey}
+	n.BlockChain = BlockChain{PublicKey: n.Wallet.PublicKey}
 	n.BlockChain.LoadData()
 	n.ListenForInput()
 }

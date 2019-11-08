@@ -8,7 +8,7 @@ import (
 
 var Verification struct {
 	ValidProof         func(tx []Transaction, lastHash string, proof uint64) bool
-	VerifyChain        func(bch BlockChain) bool
+	VerifyChain        func(chain []Block) bool
 	VerifyTransaction  func(tx Transaction, getBalance func(string) float64) bool
 	VerifyTransactions func(openTransactions []Transaction) bool
 }
@@ -21,13 +21,13 @@ func init() {
 		fmt.Println(h)
 		return h[:2] == "00"
 	}
-	Verification.VerifyChain = func(bch BlockChain) bool {
-		for i, b := range bch.Chain() {
+	Verification.VerifyChain = func(chain []Block) bool {
+		for i, b := range chain {
 			if i == 0 {
 				continue
 			}
 
-			if b.PreviousHash != bch.Chain()[i-1].Hash() {
+			if b.PreviousHash != chain[i-1].Hash() {
 				return false
 			}
 			if !Verification.ValidProof(b.Transactions[:len(b.Transactions)-1], b.PreviousHash, b.Proof) {

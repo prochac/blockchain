@@ -59,7 +59,7 @@ func (n *Node) ListenForInput() {
 		}
 		fmt.Printf("Balance of %s: %6.2f\n", n.Wallet, n.BlockChain.GetBalance())
 
-		if !Verification.VerifyChain(n.BlockChain) {
+		if !Verification.VerifyChain(n.BlockChain.Chain()) {
 			panic("chain is broken")
 		}
 	}

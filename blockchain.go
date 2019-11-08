@@ -21,6 +21,7 @@ type BlockChain struct {
 	chain            []Block
 	openTransactions []Transaction
 	peerNodes        []string // TODO transform to set (map[string]struct{})
+	ResolveConflicts bool
 }
 
 func (b *BlockChain) Chain() []Block {
@@ -218,6 +219,9 @@ func (b *BlockChain) AddTransaction(recipient, sender string, signature string, 
 			fmt.Println("Transaction declined, needs resolving")
 			return false
 		}
+		if resp.StatusCode == 409 {
+			b.ResolveConflicts = true
+		}
 	}
 
 	return true
@@ -307,6 +311,38 @@ func (b *BlockChain) PeerNodes() []string {
 	cp := make([]string, len(b.peerNodes))
 	copy(cp, b.peerNodes)
 	return cp
+}
+
+func (b *BlockChain) Resolve() bool {
+	winnerChain := b.chain
+	var replace bool
+
+	for _, node := range b.peerNodes {
+		resp, err := (&http.Client{Timeout: time.Second}).Get("http://" + node + "/chain")
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+		if err != nil {
+			// TODO only connection error
+			continue
+		}
+		var nodeChain []Block
+		if err := json.NewDecoder(resp.Body).Decode(&nodeChain); err != nil {
+			continue
+		}
+
+		if len(nodeChain) > len(winnerChain) && Verification.VerifyChain(nodeChain) {
+			winnerChain = nodeChain
+			replace = true
+		}
+	}
+	b.ResolveConflicts = false
+	b.chain = winnerChain
+	if replace {
+		b.openTransactions = make([]Transaction, 0)
+	}
+	b.SaveData()
+	return replace
 }
 
 func (b *BlockChain) AddPeerNode(node string) {

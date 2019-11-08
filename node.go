@@ -166,12 +166,20 @@ func broadcastBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if block.Index > blockchain.GetLastBlock().Index+1 {
-		// too much new
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Blockchain seems to differ from local blockchain.",
+		})
+
+		blockchain.ResolveConflicts = true
+
+		return
 	}
 	//if block.Index == blockchain.GetLastBlock().Index+1
 	if !blockchain.AddBlock(block) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Block seems invalid.",
 		})
@@ -242,6 +250,15 @@ func mine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if blockchain.ResolveConflicts {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Resolve conflicts first, block not added!",
+		})
+		return
+	}
+
 	block := blockchain.MineBlock()
 	if block == nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -259,6 +276,28 @@ func mine(w http.ResponseWriter, r *http.Request) {
 		"message": "Block added successfully.",
 		"block":   block,
 		"funds":   blockchain.GetBalance(),
+	})
+}
+
+func resolveConflicts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !blockchain.Resolve() {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Local chain kept!",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Chain was replaced!",
 	})
 }
 
@@ -387,6 +426,7 @@ func main() {
 	http.HandleFunc("/node/", removeNode)
 	http.HandleFunc("/broadcast-transaction", broadcastTransaction)
 	http.HandleFunc("/broadcast-block", broadcastBlock)
+	http.HandleFunc("/resolve-conflicts", resolveConflicts)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	fmt.Printf("* Running on http://%s/ (Press CTRL+C to quit)\n", addr)

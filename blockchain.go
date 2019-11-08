@@ -50,52 +50,47 @@ func (b *BlockChain) LoadData() {
 
 	r := bufio.NewReader(f)
 
-	var buf bytes.Buffer
+	var chainBuf bytes.Buffer
 	chainLine, err := r.ReadSlice('\n')
 	for err == bufio.ErrBufferFull {
-		buf.Write(chainLine)
+		chainBuf.Write(chainLine)
 		chainLine, err = r.ReadSlice('\n')
 	}
 	if err != nil {
 		panic(err)
 	}
-	buf.Write(chainLine)
-	if err := json.NewDecoder(&buf).Decode(&b.chain); err != nil {
+	chainBuf.Write(chainLine)
+	if err := json.NewDecoder(&chainBuf).Decode(&b.chain); err != nil {
 		panic(err)
 	}
 
-	buf.Reset()
+	var txBuf bytes.Buffer
 	txLine, err := r.ReadSlice('\n')
 	for err == bufio.ErrBufferFull {
-		buf.Write(txLine)
+		txBuf.Write(txLine)
 		txLine, err = r.ReadSlice('\n')
 	}
 	if err != nil {
 		panic(err)
 	}
-	buf.Write(chainLine)
-	if err := json.NewEncoder(&buf).Encode(&b.openTransactions); err != nil {
+	txBuf.Write(txLine)
+	if err := json.NewDecoder(&txBuf).Decode(&b.openTransactions); err != nil {
 		panic(err)
 	}
 
-	buf.Reset()
+	var nodesBuf bytes.Buffer
 	nodesLine, err := r.ReadSlice('\n')
 	for err == bufio.ErrBufferFull {
-		buf.Write(nodesLine)
+		nodesBuf.Write(nodesLine)
 		nodesLine, err = r.ReadSlice('\n')
 	}
 	if err != nil {
 		panic(err)
 	}
-	buf.Write(nodesLine)
-
-	fmt.Println(buf.String())
-
-	var s []string
-	if err := json.Unmarshal(buf.Bytes(), &s); err != nil {
+	nodesBuf.Write(nodesLine)
+	if err := json.NewDecoder(&nodesBuf).Decode(&b.peerNodes); err != nil {
 		panic(err)
 	}
-	b.peerNodes = s
 }
 
 func (b BlockChain) SaveData() {
@@ -166,7 +161,7 @@ func (b BlockChain) GetLastBlock() *Block {
 	return &b.chain[len(b.chain)-1]
 }
 
-func (b *BlockChain) AddTransaction(recipient, sender string, signature string, amount float64) bool {
+func (b *BlockChain) AddTransactionReceiving(recipient, sender string, signature string, amount float64) bool {
 	if b.PublicKey == "" {
 		return false
 	}
@@ -188,8 +183,18 @@ func (b *BlockChain) AddTransaction(recipient, sender string, signature string, 
 	return true
 }
 
-func (b *BlockChain) AddTransactionReceiving(recipient, sender string, signature string, amount float64) bool {
-	if !b.AddTransaction(recipient, sender, signature, amount) {
+func (b *BlockChain) RemoveTransaction(tx Transaction) {
+	for i := range b.openTransactions {
+		if b.openTransactions[i] == tx {
+			// https://github.com/golang/go/wiki/SliceTricks#delete
+			b.openTransactions = b.openTransactions[:i+copy(b.openTransactions[i:], b.openTransactions[i+1:])]
+			return
+		}
+	}
+}
+
+func (b *BlockChain) AddTransaction(recipient, sender string, signature string, amount float64) bool {
+	if !b.AddTransactionReceiving(recipient, sender, signature, amount) {
 		return false
 	}
 
@@ -283,8 +288,17 @@ func (b *BlockChain) AddBlock(block Block) bool {
 	if b.GetLastBlock().Hash() != block.PreviousHash {
 		return false
 	}
-
 	b.chain = append(b.chain, block)
+
+	storedTransactions := b.OpenTransactions()
+	for _, tx := range block.Transactions {
+		for _, openTx := range storedTransactions {
+			if openTx == tx {
+				blockchain.RemoveTransaction(openTx)
+			}
+		}
+	}
+
 	b.SaveData()
 	return true
 }
